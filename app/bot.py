@@ -12,6 +12,7 @@ def extract_arg(arg: str) -> list[str]:
     if len(args) == 0:
         logging.error(f"Отсутствуют аргументы для команды")
         raise ValueError('Отсутствуют аргументы команды')
+    return args
 
 
 @bot.message_handler(commands=["start"])
