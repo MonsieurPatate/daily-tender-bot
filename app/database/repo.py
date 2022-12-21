@@ -39,5 +39,8 @@ class MemberRepo:
     def get_participants(chat_id: int):
         logging.info(f"Получение пользователей")
         result = Member.select().where(Member.is_participant & (Member.chat_id == chat_id))
+        if len(result) == 0:
+            logging.error(f"Не найдено участников тендера в базе данных (chatid={chat_id})")
+            raise DatabaseError("Не найдено участников тендера в базе данных")
         logging.info(f"Получено пользователей: {len(result)}")
         return result
