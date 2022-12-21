@@ -8,7 +8,10 @@ bot = TeleBot(bot_token)
 
 
 def extract_arg(arg: str) -> list[str]:
-    return arg.split()[1:]
+    args = arg.split()[1:]
+    if len(args) == 0:
+        logging.error(f"Отсутствуют аргументы для команды")
+        raise ValueError('Отсутствуют аргументы команды')
 
 
 @bot.message_handler(commands=["start"])
@@ -23,9 +26,6 @@ def add(message):
         try:
             args: list[str] = extract_arg(message.text)
             chat_id = message.chat.id
-            if len(args) == 0:
-                logging.warning(f"Отсутствуют аргументы для создания пользователя (chatid={chat_id})")
-                bot.send_message(chat_id, f"После команды /add необходимо написать имя участника")
             name = ' '.join(args)
             result_message = MemberRepo.add_participant(full_name=name, chat_id=chat_id)
             bot.send_message(message.chat.id, result_message)
@@ -54,10 +54,6 @@ def chat_info(message):
         try:
             chat_id = message.chat.id
             members = MemberRepo.get_participants(chat_id=chat_id)
-            if len(members) == 0:
-                bot.send_message(chat_id, "Не найдено участников тендера в базе данных, " +
-                                          "добавьте новых участников через команду /add")
-                return
             res = f'Встречайте участников тендера:\n'
             i = 0
             for member in members:
