@@ -22,8 +22,11 @@ def add(message):
     with db.atomic() as transaction:
         try:
             args: list[str] = extract_arg(message.text)
-            name = ' '.join(args)
             chat_id = message.chat.id
+            if len(args) == 0:
+                logging.warning(f"Отсутствуют аргументы для создания пользователя (chatid={chat_id})")
+                bot.send_message(chat_id, f"После команды /add необходимо написать имя участника")
+            name = ' '.join(args)
             result_message = MemberRepo.add_participant(full_name=name, chat_id=chat_id)
             bot.send_message(message.chat.id, result_message)
         except Exception as e:
