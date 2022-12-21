@@ -25,13 +25,15 @@ class MemberRepo:
     
     @staticmethod
     def delete_participant(full_name: str, chat_id: int):
-        participant = Member.get_or_none(Member.full_name == full_name, Member.chat_id == chat_id)
+        identity_filter = Member.id == int(full_name) if full_name.isdigit() else Member.full_name == full_name
+        identity_label = 'идентификатором' if full_name.isdigit() else 'именем'
+        participant = Member.get_or_none(identity_filter, Member.chat_id == chat_id)
         if not participant:
-            logging.warning(f'Пользователь с именем "{full_name}" не найден в базе данных')
-            return f'Не удалось удалить пользователя с именем "{full_name}" (нет в базе данных)'
+            logging.warning(f'Пользователь с {identity_label} "{full_name}" не найден в базе данных')
+            return f'Не удалось удалить пользователя с {identity_label} "{full_name}" (нет в базе данных)'
         participant.delete_instance()
-        logging.info(f'Пользователь "{full_name}" успешно удалён')
-        return f'Пользователь "{full_name}" успешно удалён'
+        logging.info(f'Пользователь с {identity_label} "{full_name}" успешно удалён')
+        return f'Пользователь с {identity_label} "{full_name}" успешно удалён'
     
     @staticmethod
     def get_participants(chat_id: int):
