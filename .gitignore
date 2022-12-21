@@ -131,3 +131,6 @@ dmypy.json
 .gitignore
 /.idea
 
+# db
+.db
+
