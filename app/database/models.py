@@ -7,7 +7,7 @@ class Member(Model):
     full_name = TextField()
     chat_id = IntegerField()
     skip_until_date = DateField(null=True)
-    is_participant = BooleanField(default=True)
+    can_participate = BooleanField(default=True)
 
     class Meta:
         database = db
