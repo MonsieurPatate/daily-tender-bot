@@ -9,7 +9,7 @@ if __name__ == '__main__':
         telebot.types.BotCommand("/start", "Запуск бота"),
         telebot.types.BotCommand("/add", "Добавление пользователей"),
         telebot.types.BotCommand("/delete", "Удаление пользователей"),
-        telebot.types.BotCommand("/chatinfo", "Список участников тендера"),
+        telebot.types.BotCommand("/info", "Список участников тендера"),
     ])
 
     # Запускаем бота
