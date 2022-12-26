@@ -17,8 +17,6 @@ from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extr
     get_members_for_daily, get_correct_poll_time
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
-bot = TeleBot(bot_token)
-
 
 def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
     """
