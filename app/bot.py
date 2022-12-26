@@ -12,23 +12,6 @@ from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extr
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
 
-def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
-    """
-    В случае, когда остаётся последний участник, который может проводить дейли,
-    отправляет сообщение о победе этого человека без создания голосования. При необходимости
-    удаляет отложенные задачи (отправка победителя голосования с посчётом голосов).
-    :param chat_id: Идентификатор чата
-    :param winner: Победивший пользователь
-    :param delete_jobs: Удалять ли отложенные задачи
-    :return:
-    """
-    logging.info("Got just one participant available, poll is not necessary")
-    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-    MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
-    if delete_jobs:
-        scheduler.delete_jobs()
-
-
 @bot.message_handler(commands=["start"])
 def start(message):
     """
@@ -46,12 +29,21 @@ def start(message):
 
 
 def schedule_checker():
+    """
+    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
+    """
     while True:
         schedule.run_pending()
         sleep(1)
 
 
 def check_poll_results(chat_id: int, poll_id: str):
+    """
+    Вызывается как отложенный метод, выполняет проверку результатов
+    голосования на проведение дейли.
+    :param chat_id: Идентификатор чата
+    :param poll_id: Идентификатор голосования
+    """
     with db.atomic() as transaction:
         try:
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
@@ -63,6 +55,12 @@ def check_poll_results(chat_id: int, poll_id: str):
 
 
 def send_winner_message(chat_id, winner):
+    """
+    Отправляет строку с указанием победителя
+    в голосовании на проведение дейли.
+    :param chat_id: Идентификатор чата
+    :param winner: Объект победителя голосования
+    """
     bot.send_message(chat_id, constants.win_message.format(winner.full_name))
     winner.can_participate = False
     winner.save()
@@ -70,6 +68,10 @@ def send_winner_message(chat_id, winner):
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    """
+    Проводит первичную инициализацию конфигурации чата.
+    :param message: Сообщение с командой
+    """
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
