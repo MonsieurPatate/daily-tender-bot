@@ -1,7 +1,6 @@
 from datetime import date
-
 from peewee import *
-
+from .config import db
 from app.config import db
 
 
@@ -25,9 +24,9 @@ class Member(Model):
         для голосования.
         :return: Строка со статусом в виде эмодзи
         """
-        if self.__is_not_available():
-            return '⏱'
-        return '✅'
+        if self.skip_until_date and self.skip_until_date > date.today() or self.can_participate:
+            return '✅'
+        return '⏱'
 
     def availability_info(self):
         """
@@ -42,6 +41,10 @@ class Member(Model):
 
         return ''
 
+    @staticmethod
+    def identity_query(identity: str):
+        return Member.id == int(identity) if identity.isdigit() else Member.full_name == identity
+
     def __is_not_available(self):
         """
         Возвращает True, если участник доступен для участия в розыгрыше
@@ -49,10 +52,6 @@ class Member(Model):
         :return: True - участник доступен, иначе - False
         """
         return self.skip_until_date and self.skip_until_date > date.today() or not self.can_participate
-
-    @staticmethod
-    def identity_query(identity: str):
-        return Member.id == int(identity) if identity.isdigit() else Member.full_name == identity
 
     @staticmethod
     def can_participate_query():
