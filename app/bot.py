@@ -4,25 +4,59 @@ from datetime import date, timedelta
 from telebot.types import Poll, PollOption
 
 from app import constants
-from app.config import db, scheduler, bot
-from app.constants import default_daily_hours, default_daily_minutes
-from app.orm_models.models import Member, ChatConfig, TenderParticipant
-from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
-    get_members_for_daily, get_correct_poll_time
-from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
+from app.database.models import Member
+from database.config import db, bot_token
+from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
+
+bot = TeleBot(bot_token)
 
 
-def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
+def extract_arg(arg: str) -> list[str]:
     """
-    В случае, когда остаётся последний участник, который может проводить дейли,
-    отправляет сообщение о победе этого человека без создания голосования. При необходимости
-    удаляет отложенные задачи (отправка победителя голосования с посчётом голосов).
+    Получает аргументы команды бота.
+    :param arg: Строка, включающая команду и аргументы вида '/command arg1 arg2'
+    :return: Список аргументов без самой команды
+    """
+    args = arg.split()[1:]
+    if len(args) == 0:
+        logging.error(f"Cannot parse command args (arg={arg})")
+        raise ValueError('Отсутствуют аргументы команды')
+    return args
+
+
+def schedule_checker():
+    """
+    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
+    """
+    while True:
+        schedule.run_pending()
+        sleep(1)
+
+
+def check_poll_results(chat_id: int, poll_id: str):
+    """
+    Вызывается как отложенный метод, выполняет проверку результатов
+    голосования на проведение дейли.
     :param chat_id: Идентификатор чата
-    :param winner: Победивший пользователь
-    :param delete_jobs: Удалять ли отложенные задачи
-    :return:
+    :param poll_id: Идентификатор голосования
     """
-    logging.info("Got just one participant available, poll is not necessary")
+    with db.atomic() as transaction:
+        try:
+            winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
+            send_winner_message(chat_id, winner)
+            return schedule.CancelJob
+        except Exception as e:
+            transaction.rollback()
+            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
+
+
+def send_winner_message(chat_id, winner):
+    """
+    Отправляет строку с указанием победителя
+    в голосовании на проведение дейли.
+    :param chat_id: Идентификатор чата
+    :param winner: Объект победителя голосования
+    """
     bot.send_message(chat_id, constants.win_message.format(winner.full_name))
     MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
     if delete_jobs:
@@ -70,7 +104,8 @@ def delete(message):
     """
     with db.atomic() as transaction:
         try:
-            identity = get_string_after_command(message.text)
+            args: list[str] = extract_arg(message.text)
+            identity = ' '.join(args)
             chat_id = message.chat.id
             MemberRepo.delete_member(identity=identity, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
