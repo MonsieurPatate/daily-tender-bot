@@ -1,9 +1,13 @@
 import logging
-from datetime import date, datetime
-from threading import Thread
+from datetime import date, timedelta
 from time import sleep
 
+from telebot import TeleBot
 from telebot.types import Poll, PollOption
+
+from app.database.models import Member
+from database.config import db, bot_token
+from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
 from app import constants
 from app.config import db, scheduler, bot
@@ -12,6 +16,8 @@ from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
     get_members_for_daily, get_correct_poll_time
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
+
+bot = TeleBot(bot_token)
 
 
 def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
@@ -56,38 +62,6 @@ def schedule_checker():
         scheduler.exec_jobs()
         sleep(1)
     logging.info('Schedule loop shut down successfully')
-
-
-def check_poll_results(chat_id: int):
-    """
-    Вызывается как отложенный метод, выполняет проверку результатов
-    голосования на проведение дейли.
-    :param chat_id: Идентификатор чата
-    """
-    with db.atomic() as transaction:
-        try:
-            config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
-            poll_id: str = config.last_poll_id
-            winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
-            bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-            MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
-        except Exception as e:
-            transaction.rollback()
-            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
-
-
-def set_schedule(time: datetime, chat_id: int):
-    """
-    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
-    задачи.
-    :param time: Время
-    :param chat_id: Идентификатор чата
-    :return:
-    """
-    logging.info("Setting schedule to check poll results to time (UTC): {}"
-                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
-    Thread(target=schedule_checker).start()
 
 
 @bot.message_handler(commands=["start"])
