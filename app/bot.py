@@ -16,6 +16,11 @@ bot = TeleBot(bot_token)
 
 
 def extract_arg(arg: str) -> list[str]:
+    """
+    Получает аргументы команды бота.
+    :param arg: Строка, включающая команду и аргументы вида '/command arg1 arg2'
+    :return: Список аргументов без самой команды
+    """
     args = arg.split()[1:]
     if len(args) == 0:
         logging.error(f"Cannot parse command args (arg={arg})")
@@ -24,12 +29,21 @@ def extract_arg(arg: str) -> list[str]:
 
 
 def schedule_checker():
+    """
+    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
+    """
     while True:
         schedule.run_pending()
         sleep(1)
 
 
 def check_poll_results(chat_id: int, poll_id: str):
+    """
+    Вызывается как отложенный метод, выполняет проверку результатов
+    голосования на проведение дейли.
+    :param chat_id: Идентификатор чата
+    :param poll_id: Идентификатор голосования
+    """
     with db.atomic() as transaction:
         try:
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
@@ -41,6 +55,12 @@ def check_poll_results(chat_id: int, poll_id: str):
 
 
 def send_winner_message(chat_id, winner):
+    """
+    Отправляет строку с указанием победителя
+    в голосовании на проведение дейли.
+    :param chat_id: Идентификатор чата
+    :param winner: Объект победителя голосования
+    """
     bot.send_message(chat_id, constants.win_message.format(winner.full_name))
     winner.can_participate = False
     winner.save()
@@ -48,6 +68,10 @@ def send_winner_message(chat_id, winner):
 
 @bot.message_handler(commands=["start"])
 def start(message):
+    """
+    Проводит первичную инициализацию конфигурации чата.
+    :param message: Сообщение с командой
+    """
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
@@ -61,13 +85,17 @@ def start(message):
 
 @bot.message_handler(commands=["add"])
 def add(message):
+    """
+    Добавляет пользователя. В сообщении после команды должно быть имя пользователя.
+    :param message: Сообщение с командой
+    """
     with db.atomic() as transaction:
         try:
             args: list[str] = extract_arg(message.text)
             chat_id = message.chat.id
             name = ' '.join(args)
-            result_message = MemberRepo.add_member(full_name=name, chat_id=chat_id)
-            bot.send_message(message.chat.id, result_message)
+            MemberRepo.add_member(full_name=name, chat_id=chat_id)
+            bot.send_message(message.chat.id, 'Пользователь "{}" успешно добавлен'.format(name))
         except Exception as e:
             transaction.rollback()
             bot.send_message(message.chat.id, f"Произошла ошибка при добавлении пользователя: {e}")
@@ -75,13 +103,18 @@ def add(message):
 
 @bot.message_handler(commands=["delete"])
 def delete(message):
+    """
+    Удаляет пользователя. В сообщении после команды должно быть имя пользователя.
+    :param message: Сообщение с командой
+    """
     with db.atomic() as transaction:
         try:
             args: list[str] = extract_arg(message.text)
-            name = ' '.join(args)
+            identity = ' '.join(args)
             chat_id = message.chat.id
-            result_message = MemberRepo.delete_member(identity=name, chat_id=chat_id)
-            bot.send_message(message.chat.id, result_message)
+            MemberRepo.delete_member(identity=identity, chat_id=chat_id)
+            bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
+                             .format(identity))
         except Exception as e:
             transaction.rollback()
             bot.send_message(message.chat.id, f"Произошла ошибка при удалении пользователя: {e}")
@@ -89,14 +122,17 @@ def delete(message):
 
 @bot.message_handler(commands=["info"])
 def chat_info(message):
+    """
+    Отправляет информацию об пользователях их доступности для участия в голосовании.
+    :param message: Сообщение с командой
+    :return:
+    """
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
             members = MemberRepo.get_members(chat_id=chat_id)
-            res = f'Встречайте участников тендера:\n'
-            i = 0
-            for member in members:
-                i += 1
+            res = 'Встречайте участников тендера:\n'
+            for i, member in enumerate(list(members), 1):
                 res += f'{i}. {member.get_status_emoji()} {member.full_name} (id={member.id})\n'
             bot.send_message(chat_id, res)
         except Exception as e:
@@ -106,6 +142,11 @@ def chat_info(message):
 
 @bot.message_handler(commands=["poll"])
 def vote(message):
+    """
+    Запускает голосование из трёх случайно выбранных пользователей на указанное время.
+    В сообщении после команды должно быть время окончания голосования.
+    :param message: Сообщение с командой
+    """
     sent_message = None
     with db.atomic() as transaction:
         try:
@@ -146,6 +187,11 @@ def vote(message):
 
 @bot.poll_handler(lambda p: not p.is_closed)
 def vote_answer_handler(poll: Poll):
+    """
+    Хэндлер, реагирующий на выборы в голосовании. Записывает голоса
+    участников голосования в БД.
+    :param poll: Объект голосования
+    """
     with db.atomic() as transaction:
         try:
             poll_id: str = poll.id

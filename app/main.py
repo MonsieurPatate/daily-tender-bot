@@ -4,7 +4,6 @@ from app.database.config import db
 from app.database.models import Member, ChatConfig, TenderParticipant
 from bot import bot
 
-
 if __name__ == '__main__':
     # db.drop_tables([Member, ChatConfig, TenderParticipant])
     db.create_tables([Member, ChatConfig, TenderParticipant])
