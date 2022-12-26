@@ -45,6 +45,42 @@ def start(message):
             bot.send_message(message.chat.id, f"Произошла ошибка при добавлении первичной конфигурации бота: {e}")
 
 
+def schedule_checker():
+    while True:
+        schedule.run_pending()
+        sleep(1)
+
+
+def check_poll_results(chat_id: int, poll_id: str):
+    with db.atomic() as transaction:
+        try:
+            winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
+            send_winner_message(chat_id, winner)
+            return schedule.CancelJob
+        except Exception as e:
+            transaction.rollback()
+            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
+
+
+def send_winner_message(chat_id, winner):
+    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+    winner.can_participate = False
+    winner.save()
+
+
+@bot.message_handler(commands=["start"])
+def start(message):
+    with db.atomic() as transaction:
+        try:
+            chat_id = message.chat.id
+            ConfigRepo.add_config(chat_id=chat_id)
+            bot.send_message(chat_id, 'Добавлена первичная конфигурация бота для этого чата')
+        except Exception as e:
+            transaction.rollback()
+            bot.send_message(message.chat.id,
+                             f"Произошла ошибка при добавлении первичной конфигурации бота: {e}")
+
+
 @bot.message_handler(commands=["add"])
 def add(message):
     """
