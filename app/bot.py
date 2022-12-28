@@ -1,5 +1,7 @@
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime
+from threading import Thread
+from time import sleep
 
 from telebot.types import Poll, PollOption
 
@@ -10,6 +12,23 @@ from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
     get_members_for_daily, get_correct_poll_time
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
+
+
+def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
+    """
+    В случае, когда остаётся последний участник, который может проводить дейли,
+    отправляет сообщение о победе этого человека без создания голосования. При необходимости
+    удаляет отложенные задачи (отправка победителя голосования с посчётом голосов).
+    :param chat_id: Идентификатор чата
+    :param winner: Победивший пользователь
+    :param delete_jobs: Удалять ли отложенные задачи
+    :return:
+    """
+    logging.info("Got just one participant available, poll is not necessary")
+    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+    MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
+    if delete_jobs:
+        scheduler.delete_jobs()
 
 
 @bot.message_handler(commands=["start"])
@@ -32,9 +51,11 @@ def schedule_checker():
     """
     Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
     """
-    while True:
-        schedule.run_pending()
+    logging.info('Start of schedule loop to execute jobs on separate thread')
+    while len(scheduler.get_jobs()) > 0:
+        scheduler.exec_jobs()
         sleep(1)
+    logging.info('Schedule loop shut down successfully')
 
 
 def check_poll_results(chat_id: int, poll_id: str):
@@ -47,23 +68,28 @@ def check_poll_results(chat_id: int, poll_id: str):
     with db.atomic() as transaction:
         try:
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
-            send_winner_message(chat_id, winner)
-            return schedule.CancelJob
+            bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+            winner.can_participate = False
+            winner.save()
         except Exception as e:
             transaction.rollback()
             bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
 
 
-def send_winner_message(chat_id, winner):
+def set_schedule(time: datetime, chat_id: int, poll_id: str):
     """
-    Отправляет строку с указанием победителя
-    в голосовании на проведение дейли.
+    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
+    задачи.
+    :param time: Время
     :param chat_id: Идентификатор чата
-    :param winner: Объект победителя голосования
+    :param poll_id: Идентификатор голосования
+    :return:
     """
-    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-    winner.can_participate = False
-    winner.save()
+    logging.info("Setting schedule to check poll results to time (UTC): {}"
+                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
+    scheduler.delete_jobs()
+    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id, 'poll_id': poll_id})
+    Thread(target=schedule_checker).start()
 
 
 @bot.message_handler(commands=["start"])
@@ -156,12 +182,6 @@ def vote(message):
             chat_id = message.chat.id
             args: list[str] = extract_arg(message.text, 2, True)
             hours, minutes, warning = default_daily_hours, default_daily_minutes, None
-
-            if args:
-                hours, minutes, warning = get_correct_poll_time(args[0], args[1])
-
-            if warning:
-                bot.send_message(chat_id, warning)
 
             if args:
                 hours, minutes, warning = get_correct_poll_time(args[0], args[1])
