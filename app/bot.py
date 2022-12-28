@@ -15,14 +15,19 @@ from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 bot = TeleBot(bot_token)
 
 
-def get_today_time_utc(hours: int, minutes: int):
+def get_daily_time_utc(hours: int, minutes: int):
     """
     Возвращает сегодняшнюю дату по UTC с конкретным временем (часы и минуты).
     :param hours: Часы
     :param minutes: Минуты
     :return: Объект времени
     """
-    return datetime.now(tz=timezone.utc).replace(hour=hours, minute=minutes, second=0)
+    now = datetime.now(tz=timezone.utc)
+    daily_time = now.replace(hour=hours, minute=minutes, second=0)
+    if daily_time < now:
+        raise ValueError('Время дейли должно быть задано после текущего времени (время={}:{} по UTC, сейчас={}:{} по '
+                         'UTC)'.format(hours, minutes, now.hour, now.minute))
+    return daily_time
 
 
 def extract_arg(arg: str, count: int = None, zero_args: bool = False) -> list[str] | None:
@@ -218,7 +223,7 @@ def vote(message):
             TenderParticipantRepo.delete_participants(chat_id)
             TenderParticipantRepo.add_participants(poll_id, members)
 
-            set_schedule(time=get_today_time_utc(hours, minutes),
+            set_schedule(time=get_daily_time_utc(hours, minutes),
                          chat_id=chat_id,
                          poll_id=poll_id)
 
