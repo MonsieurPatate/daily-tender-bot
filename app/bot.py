@@ -48,7 +48,7 @@ def start(message):
             bot.send_message(chat_id, 'Добавлена первичная конфигурация бота для этого чата')
         except Exception as e:
             transaction.rollback()
-            bot.send_message(message.chat.id, f"Произошла ошибка при добавлении первичной конфигурации бота: {e}")
+            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
 
 
 def schedule_checker():

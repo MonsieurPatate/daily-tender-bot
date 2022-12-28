@@ -121,7 +121,7 @@ class ConfigRepo:
 
 class MemberRepo:
     """
-    Репозиторий пользователей у которых есть возможность учавствовать
+    Репозиторий пользователей у которых есть возможность участвовать
     в голосовании за проведение дейли
     """
     @staticmethod
@@ -140,7 +140,7 @@ class MemberRepo:
         logging.info('Added new user with name "{0}" ({1})'.format(chat_id, res))
 
     @staticmethod
-    def reset_member_participation_status(chat_id: int):
+    def reset_members_participation_statuses(chat_id: int):
         """
         Сбрасывает возможность участвовать в голосовании у всех
         пользователей чата.
@@ -210,7 +210,7 @@ class MemberRepo:
         if member_count == 0:
             logging.warning("No members in db that can participate on daily tender (chat id={0}), resetting members..."
                             .format(chat_id))
-            MemberRepo.reset_member_participation_status(chat_id)
+            MemberRepo.reset_members_participation_statuses(chat_id)
         else:
             logging.info("{} members can participate".format(member_count))
 
