@@ -15,5 +15,5 @@ if __name__ == '__main__':
         telebot.types.BotCommand("/poll", "Создание тендера на проведение дейли"),
     ])
 
-    # Запускаем бота
-    bot.polling(none_stop=True, interval=0)
+    # Start the bot
+    bot.polling(non_stop=True, interval=0)
