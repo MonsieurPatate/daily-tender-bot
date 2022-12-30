@@ -2,9 +2,12 @@
 name = "daily-tender-bot"
 version = "0.1.0"
 description = ""
-authors = ["Kirill <nazarov1995@icloud.com>"]
+authors = [
+    "Kirill <nazarov1995@icloud.com>",
+    "Kamil",
+    "Patate"
+]
 readme = "README.md"
-packages = [{include = "daily_tender_bot"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
