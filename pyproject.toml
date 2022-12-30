@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "daily-tender-bot"
+version = "0.1.0"
+description = ""
+authors = ["Kirill <nazarov1995@icloud.com>"]
+readme = "README.md"
+packages = [{include = "daily_tender_bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+telebot = "^0.0.4"
+peewee = "^3.15.4"
+scheduler = "^0.8.2"
+pytelegrambotapi = "^4.8.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
