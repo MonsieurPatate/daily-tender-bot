@@ -1,7 +1,7 @@
 import logging
 from datetime import date, timezone, datetime, timedelta
 from threading import Thread
-from time import sleep, strftime
+from time import sleep
 
 from peewee import DatabaseError
 from telebot import TeleBot
@@ -188,16 +188,8 @@ def vote(message):
     sent_message = None
     with db.atomic() as transaction:
         try:
-            args: list[str] = extract_arg(message.text)
-            if args:
-                hours, minutes = args[0], args[1]
-                if not (hours.isdigit() and minutes.isdigit()):
-                    raise ValueError('Время задано неверно: часы={}, минуты={}. '
-                                     'Все поля должны быть целыми числами'.format(hours, minutes))
-                hours, minutes = int(hours), int(minutes)
-            else:
-                hours, minutes = default_daily_hours, default_daily_minutes
-
+            args: list[str] = extract_arg(message.text, 2, True)
+            hours, minutes = default_daily_hours, default_daily_minutes
             chat_id = message.chat.id
             args: list[str] = extract_arg(message.text, 2, True)
             hours, minutes, warning = default_daily_hours, default_daily_minutes, None
@@ -207,6 +199,18 @@ def vote(message):
 
             if warning:
                 bot.send_message(chat_id, warning)
+
+            if args and args[0].isdigit() and args[1].isdigit():
+                hours, minutes = int(args[0]), int(args[1])
+            elif args and not (args[0].isdigit() and args[1].isdigit()):
+                logging.warning("Got time in wrong format (hours={}, minutes={}). All args should be digits."
+                                .format(hours, minutes))
+                logging.info("Setting default time UTC (hours={}, minutes={}) for scheduling daily poll"
+                             .format(default_daily_hours, default_daily_minutes))
+                bot.send_message(chat_id, 'Не удалось установить дейли в указанное время '
+                                          '(часы={}, минуты={}). Голосование установлено на '
+                                          'время по умолчанию ({}:{} UTC)'
+                                 .format(hours, minutes, default_daily_hours, default_daily_minutes))
 
             if not ConfigRepo.can_organise_daily_poll(chat_id):
                 logging.error('Cannot organise daily tender in chat (id={}): there was already a daily tender today'
