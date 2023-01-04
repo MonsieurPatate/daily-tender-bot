@@ -24,9 +24,9 @@ class Member(Model):
         для голосования.
         :return: Строка со статусом в виде эмодзи
         """
-        if self.skip_until_date and self.skip_until_date > date.today() or self.can_participate:
-            return '✅'
-        return '⏱'
+        if self.skip_until_date and self.skip_until_date > date.today() and self.can_participate:
+            return '⏱'
+        return '✅'
 
     def availability_info(self):
         """

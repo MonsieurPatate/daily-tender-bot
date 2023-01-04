@@ -1,14 +1,15 @@
 import logging
 from datetime import date, timezone, datetime, timedelta
 from threading import Thread
-from time import sleep
+from time import sleep, strftime
 
+from peewee import DatabaseError
 from telebot import TeleBot
 from telebot.types import Poll, PollOption
 
 from app import constants
 from app.constants import default_daily_hours, default_daily_minutes
-from app.database.models import Member
+from app.database.models import Member, ChatConfig, TenderParticipant
 from database.config import db, bot_token, scheduler
 from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
@@ -25,8 +26,11 @@ def get_daily_time_utc(hours: int, minutes: int):
     now = datetime.now(tz=timezone.utc)
     daily_time = now.replace(hour=hours, minute=minutes, second=0)
     if daily_time < now:
-        raise ValueError('Время дейли должно быть задано после текущего времени (время={}:{} по UTC, сейчас={}:{} по '
-                         'UTC)'.format(hours, minutes, now.hour, now.minute))
+        daily_time_str = daily_time.strftime('%H:%M')
+        now_str = now.strftime('%H:%M')
+        raise ValueError('Время дейли должно быть задано '
+                         'после текущего времени (время={} по UTC, сейчас={} по '
+                         'UTC)'.format(daily_time_str, now_str))
     return daily_time
 
 
@@ -62,37 +66,35 @@ def schedule_checker():
     logging.info('Schedule loop shut down successfully')
 
 
-def check_poll_results(chat_id: int, poll_id: str):
+def check_poll_results(chat_id: int):
     """
     Вызывается как отложенный метод, выполняет проверку результатов
     голосования на проведение дейли.
     :param chat_id: Идентификатор чата
-    :param poll_id: Идентификатор голосования
     """
     with db.atomic() as transaction:
         try:
+            config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
+            poll_id: str = config.last_poll_id
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
             bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-            winner.can_participate = False
-            winner.save()
+            MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
         except Exception as e:
             transaction.rollback()
             bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
 
 
-def set_schedule(time: datetime, chat_id: int, poll_id: str):
+def set_schedule(time: datetime, chat_id: int):
     """
     Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
     задачи.
     :param time: Время
     :param chat_id: Идентификатор чата
-    :param poll_id: Идентификатор голосования
     :return:
     """
     logging.info("Setting schedule to check poll results to time (UTC): {}"
                  .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.delete_jobs()
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id, 'poll_id': poll_id})
+    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
     Thread(target=schedule_checker).start()
 
 
@@ -122,6 +124,9 @@ def add(message):
         try:
             chat_id = message.chat.id
             name = get_string_after_command(message.text)
+            if not name:
+                logging.error('Cannot add member without name')
+                raise ValueError('Не удаётся добавить пользователя без имени')
             MemberRepo.add_member(full_name=name, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь "{}" успешно добавлен'.format(name))
         except Exception as e:
@@ -139,6 +144,9 @@ def delete(message):
         try:
             args: list[str] = extract_arg(message.text)
             identity = ' '.join(args)
+            if not identity:
+                logging.error('Cannot add member without identity')
+                raise ValueError('Не удаётся добавить пользователя без имени ли или id')
             chat_id = message.chat.id
             MemberRepo.delete_member(identity=identity, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
@@ -184,7 +192,8 @@ def vote(message):
             if args:
                 hours, minutes = args[0], args[1]
                 if not (hours.isdigit() and minutes.isdigit()):
-                    raise ValueError('Время задано неверно: {} {}'.format(hours, minutes))
+                    raise ValueError('Время задано неверно: часы={}, минуты={}. '
+                                     'Все поля должны быть целыми числами'.format(hours, minutes))
                 hours, minutes = int(hours), int(minutes)
             else:
                 hours, minutes = default_daily_hours, default_daily_minutes
@@ -206,12 +215,11 @@ def vote(message):
 
             members = get_members_for_daily(chat_id)
 
-            if len(participants) == 1:
+            if len(members) == 1:
                 logging.info("Got just one participant available, poll is not necessary")
-                winner = participants[0]
+                winner = members[0]
                 bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-                winner.can_participate = False
-                winner.save()
+                MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
                 return
 
             options = [m.full_name for m in members]
@@ -223,9 +231,8 @@ def vote(message):
             TenderParticipantRepo.delete_participants(chat_id)
             TenderParticipantRepo.add_participants(poll_id, members)
 
-            set_schedule(time=get_daily_time_utc(hours, minutes),
-                         chat_id=chat_id,
-                         poll_id=poll_id)
+            daily_time = get_daily_time_utc(hours, minutes)
+            set_schedule(time=daily_time, chat_id=chat_id)
 
             ConfigRepo.update_config(chat_id=chat_id,
                                      last_daily_date=date.today(),
@@ -236,6 +243,23 @@ def vote(message):
             if sent_message:
                 bot.delete_message(chat_id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при создании опроса: {e}")
+
+
+def get_members_for_daily(chat_id):
+    members = MemberRepo.get_available_members(chat_id=chat_id)
+    if members is None:
+        logging.warning("No members in db that can participate "
+                        "on daily tender (chat id={0}), resetting members..."
+                        .format(chat_id))
+        MemberRepo.reset_members_participation_statuses(chat_id)
+        members = MemberRepo.get_available_members(chat_id=chat_id)
+        if members is None:
+            logging.error("Cannot get members: no users in db that "
+                          "can participate on daily tender (chat id={})".format(chat_id))
+            raise DatabaseError('Не удалось получить пользователей для создания опроса')
+    else:
+        logging.info("{} members can participate".format(len(members)))
+    return members
 
 
 @bot.message_handler(commands=["repoll"])
