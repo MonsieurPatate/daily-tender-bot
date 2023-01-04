@@ -25,9 +25,9 @@ class Member(Model):
         для голосования.
         :return: Строка со статусом в виде эмодзи
         """
-        if self.skip_until_date and self.skip_until_date > date.today() or self.can_participate:
-            return '✅'
-        return '⏱'
+        if self.skip_until_date and self.skip_until_date > date.today() and self.can_participate:
+            return '⏱'
+        return '✅'
 
     @staticmethod
     def identity_query(identity: str):
@@ -49,6 +49,8 @@ class ChatConfig(Model):
     """
     chat_id = IntegerField(unique=True)
     last_daily_date = DateField(null=True)
+    last_poll_id = TextField(null=True)
+    last_poll_message_id = IntegerField(null=True)
 
     class Meta:
         database = db
