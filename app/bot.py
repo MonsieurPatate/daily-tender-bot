@@ -1,7 +1,7 @@
 import logging
 from datetime import date, datetime
 from threading import Thread
-from time import sleep, strftime
+from time import sleep
 
 from telebot.types import Poll, PollOption
 
