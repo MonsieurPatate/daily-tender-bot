@@ -216,7 +216,7 @@ class MemberRepo:
     @staticmethod
     def delete_member(identity: str, chat_id: int):
         """
-        Удаляет пользователя из участия в будущих голосовниях.
+        Удаляет пользователя из участия в будущих голосованиях.
         :param identity: Идентификатор пользователя или имя
         :param chat_id: Идентификатор чата
         """
