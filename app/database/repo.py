@@ -25,6 +25,21 @@ class TenderParticipantRepo:
                 m.full_name, poll_id))
 
     @staticmethod
+    def get_participants_by_poll_id(poll_id: str):
+        """
+        Получает информацию об участниках голосования текущего тендера на дейли.
+        :param poll_id: Идентификатор голосования
+        :return: Список участников текущего тендера
+        """
+        logging.info(f"Retrieving tender participants...")
+        result = TenderParticipant.select().where(TenderParticipant.poll_id == poll_id)
+        if len(result) == 0:
+            logging.error("Cannot get tender participants: no tender participants in db (poll id={0})".format(poll_id))
+            raise DatabaseError("Не найдено участников тендера в базе данных")
+        logging.info(f"Retrieved members count: {len(result)}")
+        return result
+
+    @staticmethod
     def update_participant_vote_count(poll_id: str, member: Member, vote_count: int):
         """
         Обновляет кол-во голосов за участника.
@@ -34,7 +49,7 @@ class TenderParticipantRepo:
         """
         name = member.full_name
         logging.info("Updating vote count for participant {0} (poll_id={1})".format(name, poll_id))
-        poll: TenderParticipant = TenderParticipant.get_or_none(poll_id=poll_id, member=member)
+        poll: TenderParticipant = TenderParticipant.get_or_none(poll_id=poll_id, member_id=member.id)
         if not poll:
             logging.error("Cannot retrieve poll by poll_id={}".format(poll_id))
             raise DatabaseError("Не удаётся получить голосование с id={}".format(poll_id))
@@ -102,11 +117,16 @@ class ConfigRepo:
         return True
 
     @staticmethod
-    def update_config(chat_id: int, last_daily_date: date = None):
+    def update_config(chat_id: int,
+                      last_daily_date: date = None,
+                      last_poll_id: str = None,
+                      last_poll_message_id: int = None):
         """
-        Обновляет конфигурацию чата
+        Обновляет конфигурацию чата.
         :param chat_id: Идентификатор чата
         :param last_daily_date: Дата последнего проведения тендера на дейли
+        :param last_poll_id: Идентификатор последнего голосования
+        :param last_poll_message_id: Идентификатор сообщения с последним голосованием
         """
         logging.info("Updating configuration of chat with id={}".format(chat_id))
         config: ChatConfig = ChatConfig.get_or_none(chat_id=chat_id)
@@ -115,8 +135,25 @@ class ConfigRepo:
             raise DatabaseError('Не удалось получить конфигурацию чата с id={}'.format(chat_id))
         if last_daily_date:
             config.last_daily_date = last_daily_date
+        if last_poll_id:
+            config.last_poll_id = last_poll_id
+        if last_poll_message_id:
+            config.last_poll_message_id = last_poll_message_id
         res = config.save()
         logging.info("Configuration of chat #{0} is updated ({1})".format(chat_id, res))
+
+    @staticmethod
+    def get_config(chat_id: int):
+        """
+        Возвращает конфигурацию чата по идентификатору.
+        :param chat_id: Идентификатор чата
+        :return: Объект чата
+        """
+        config = ChatConfig.get_or_none(ChatConfig.chat_id == chat_id)
+        if not config:
+            logging.error('Cannot find config of chat with id "{}"'.format(chat_id))
+            raise DatabaseError('Не удалось найти конфигурацию чата с id "{}"'.format(chat_id))
+        return config
 
 
 class MemberRepo:
@@ -138,6 +175,30 @@ class MemberRepo:
             raise DatabaseError('Пользователь "{}" уже есть в базе данных'.format(full_name))
         res = participant.save()
         logging.info('Added new user with name "{0}" ({1})'.format(chat_id, res))
+
+    @staticmethod
+    def update_member(chat_id: int,
+                      full_name: str,
+                      can_participate: bool = None,
+                      skip_until_date: date = None):
+        """
+        Обновляет пользователя чата.
+        :param chat_id: Идентификатор чата
+        :param full_name: Имя участника
+        :param can_participate: Возможность участвовать в дейли
+        :param skip_until_date: Дата, до которой пропускается участие в дейли
+        """
+        logging.info('Updating member with name "{}" of chat with id={}'.format(full_name, chat_id))
+        member: Member = Member.get_or_none(chat_id=chat_id, full_name=full_name)
+        if not member:
+            logging.error('Cannot retrieve member with name "{}" from chat with id={}'.format(full_name, chat_id))
+            raise DatabaseError('Не удалось получить участника по имени "{}" чата с id={}'.format(full_name, chat_id))
+        if can_participate is not None:
+            member.can_participate = can_participate
+        if skip_until_date:
+            member.skip_until_date = skip_until_date
+        res = member.save()
+        logging.info('Member with name "{}" of chat #{} is updated ({})'.format(full_name, chat_id, res))
 
     @staticmethod
     def reset_members_participation_statuses(chat_id: int):
@@ -169,7 +230,7 @@ class MemberRepo:
         logging.info('User with identity "{0}" deleted successfully'.format(identity))
 
     @staticmethod
-    def get_members(chat_id: int):
+    def get_members_by_chat_id(chat_id: int):
         """
         Получает информацию о пользователях чата.
         :param chat_id: Идентификатор чата
@@ -197,35 +258,33 @@ class MemberRepo:
         return member
 
     @staticmethod
-    def get_members_for_daily(chat_id: int, count: int = 3):
+    def get_available_members(chat_id: int, count: int = 3, exceptions: list[str] = None):
         """
         Получает список случайно выбранных пользователей для создания голосования.
         :param chat_id: Идентификатор чата
         :param count: Количество участников голосования
+        :param exceptions: Имена пользователей, которых не должно быть в выдаче
         :return: Список случайно выбранных пользователей
         """
         logging.info("Retrieving members for daily...")
-        member_count = Member.select().where(Member.can_participate_query() & (Member.chat_id == chat_id)).count()
 
-        if member_count == 0:
-            logging.warning("No members in db that can participate on daily tender (chat id={0}), resetting members..."
-                            .format(chat_id))
-            MemberRepo.reset_members_participation_statuses(chat_id)
-        else:
-            logging.info("{} members can participate".format(member_count))
+        if not exceptions:
+            exceptions = []
 
-        members = Member.select().where(Member.can_participate_query() & (Member.chat_id == chat_id))
+        where_query = \
+            Member.can_participate_query() & (Member.chat_id == chat_id) & (Member.full_name.not_in(exceptions))
+
+        members = Member.select().where(where_query)
 
         if len(members) == 0:
-            logging.error("Cannot get members: no users in db that can participate on daily tender (chat id={0})")
-            raise DatabaseError('Не удалось получить пользователей для создания опроса')
+            return None
 
-        if len(members) <= 3:
+        if len(members) <= count:
             member_names = [m.full_name for m in members]
-            logging.info('Got less than three candidates: {0}'.format(' '.join(member_names)))
-            return list(members), member_names
+            logging.info('Got less than {} candidates: {}'.format(count, ' '.join(member_names)))
+            return list(members)
 
         chosen_members: list[Member] = random.sample(list(members), count)
         chosen_member_names = [m.full_name for m in chosen_members]
         logging.info('Successfully chosen members: {0}'.format(' '.join(chosen_member_names)))
-        return chosen_members, chosen_member_names
+        return chosen_members

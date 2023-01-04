@@ -104,6 +104,9 @@ def delete(message):
     with db.atomic() as transaction:
         try:
             identity = get_string_after_command(message.text)
+            if not identity:
+                logging.error('Cannot add member without identity')
+                raise ValueError('Не удаётся добавить пользователя без имени ли или id')
             chat_id = message.chat.id
             MemberRepo.delete_member(identity=identity, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
