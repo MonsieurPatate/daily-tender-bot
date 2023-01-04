@@ -1,7 +1,7 @@
 import logging
 from datetime import date, datetime
 from threading import Thread
-from time import sleep
+from time import sleep, strftime
 
 from telebot.types import Poll, PollOption
 
@@ -58,37 +58,35 @@ def schedule_checker():
     logging.info('Schedule loop shut down successfully')
 
 
-def check_poll_results(chat_id: int, poll_id: str):
+def check_poll_results(chat_id: int):
     """
     Вызывается как отложенный метод, выполняет проверку результатов
     голосования на проведение дейли.
     :param chat_id: Идентификатор чата
-    :param poll_id: Идентификатор голосования
     """
     with db.atomic() as transaction:
         try:
+            config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
+            poll_id: str = config.last_poll_id
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
             bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-            winner.can_participate = False
-            winner.save()
+            MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
         except Exception as e:
             transaction.rollback()
             bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
 
 
-def set_schedule(time: datetime, chat_id: int, poll_id: str):
+def set_schedule(time: datetime, chat_id: int):
     """
     Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
     задачи.
     :param time: Время
     :param chat_id: Идентификатор чата
-    :param poll_id: Идентификатор голосования
     :return:
     """
     logging.info("Setting schedule to check poll results to time (UTC): {}"
                  .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.delete_jobs()
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id, 'poll_id': poll_id})
+    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
     Thread(target=schedule_checker).start()
 
 
