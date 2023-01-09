@@ -73,6 +73,9 @@ class ChatConfig(Model):
     last_poll_id = TextField(null=True)
     last_poll_message_id = IntegerField(null=True)
 
+    def is_poll_not_relevant(self):
+        return self.last_daily_date is None or self.last_daily_date != date.today()
+
     class Meta:
         database = db
         table_name = 'configs'
