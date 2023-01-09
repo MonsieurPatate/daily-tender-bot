@@ -25,9 +25,30 @@ class Member(Model):
         для голосования.
         :return: Строка со статусом в виде эмодзи
         """
-        if self.skip_until_date and self.skip_until_date > date.today() and self.can_participate:
+        if self.__is_not_available():
             return '⏱'
         return '✅'
+
+    def availability_info(self):
+        """
+        Возвращает информацию, проводил ли участник дейли в
+        текущей итерации, а также дату с которой он будет учавствовать в дейли
+        :return: Строка со статусом в виде эмодзи
+        """
+        if not self.can_participate:
+            return ', уже провёл дейли'
+        if self.__is_not_available() and self.skip_until_date is not None:
+            return self.skip_until_date.strftime(", доступен с %d.%m.%Y")
+
+        return ''
+
+    def __is_not_available(self):
+        """
+        Возвращает True, если участник доступен для участия в розыгрыше
+        тендера на дейли
+        :return: True - участник доступен, иначе - False
+        """
+        return self.skip_until_date and self.skip_until_date > date.today() or not self.can_participate
 
     @staticmethod
     def identity_query(identity: str):

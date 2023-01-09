@@ -203,8 +203,7 @@ class MemberRepo:
     @staticmethod
     def reset_members_participation_statuses(chat_id: int):
         """
-        Сбрасывает возможность участвовать в голосовании у всех
-        пользователей чата.
+        Сбрасывает статус всех участников к дефолтному состоянию "готов к проведению дейли"
         :param chat_id: Идентификатор чата
         """
         logging.info("Resetting member participation status of chat with id={}".format(chat_id))
