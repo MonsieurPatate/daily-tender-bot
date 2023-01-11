@@ -1,5 +1,5 @@
 import os
-from datetime import timezone
+from datetime import timezone, datetime
 
 from peewee import *
 from scheduler import Scheduler

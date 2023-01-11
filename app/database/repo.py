@@ -19,7 +19,7 @@ class TenderParticipantRepo:
         """
         logging.info("Adding tender participant for vote (poll_id={0}".format(poll_id))
         for m in members:
-            tender_participant = TenderParticipant(poll_id=poll_id, member=m, chat_id=m.chat_id)
+            tender_participant = TenderParticipant(poll_id=poll_id, member=m.id, chat_id=m.chat_id)
             tender_participant.save()
             logging.info('Tender participant "{0}" (poll_id={1}) successfully added'.format(
                 m.full_name, poll_id))
