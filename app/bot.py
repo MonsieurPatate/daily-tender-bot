@@ -1,101 +1,33 @@
 import logging
-from datetime import date, timezone, datetime, timedelta
-from threading import Thread
-from time import sleep
+from datetime import date, timedelta
 
 from peewee import DatabaseError
-from telebot import TeleBot
 from telebot.types import Poll, PollOption
 
 from app import constants
+from app.config import db, scheduler, bot
 from app.constants import default_daily_hours, default_daily_minutes
 from app.database.models import Member, ChatConfig, TenderParticipant
-from database.config import db, bot_token, scheduler
+from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
+    get_members_for_daily, get_correct_poll_time
 from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
-bot = TeleBot(bot_token)
 
-
-def get_daily_time_utc(hours: int, minutes: int):
+def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):
     """
-    Возвращает сегодняшнюю дату по UTC с конкретным временем (часы и минуты).
-    :param hours: Часы
-    :param minutes: Минуты
-    :return: Объект времени
-    """
-    now = datetime.now(tz=timezone.utc)
-    daily_time = now.replace(hour=hours, minute=minutes, second=0)
-    if daily_time < now:
-        daily_time_str = daily_time.strftime('%H:%M')
-        now_str = now.strftime('%H:%M')
-        raise ValueError('Время дейли должно быть задано '
-                         'после текущего времени (время={} по UTC, сейчас={} по '
-                         'UTC)'.format(daily_time_str, now_str))
-    return daily_time
-
-
-def extract_arg(arg: str, count: int = None, zero_args: bool = False) -> list[str] | None:
-    """
-    Получает аргументы команды бота.
-    :param arg: Строка, включающая команду и аргументы вида '/command arg1 arg2'
-    :param count: Кол-во аргументов
-    :param zero_args: Может быть 0 аргументов
-    :return: Список аргументов без самой команды, либо None, если не получилось спарсить
-    аргументы
-    """
-    args = arg.split()[1:]
-
-    if len(args) == 0 and zero_args:
-        return None
-
-    if count and len(args) != count:
-        logging.error("Cannot parse command args (arg={}). Count of args should be {}".format(arg, count))
-        raise ValueError('Отсутствуют аргументы команды (строка - "{}"). Должно быть аргументов: {}'.format(arg, count))
-
-    return args
-
-
-def schedule_checker():
-    """
-    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
-    """
-    logging.info('Start of schedule loop to execute jobs on separate thread')
-    while len(scheduler.get_jobs()) > 0:
-        scheduler.exec_jobs()
-        sleep(1)
-    logging.info('Schedule loop shut down successfully')
-
-
-def check_poll_results(chat_id: int):
-    """
-    Вызывается как отложенный метод, выполняет проверку результатов
-    голосования на проведение дейли.
+    В случае, когда остаётся последний участник, который может проводить дейли,
+    отправляет сообщение о победе этого человека без создания голосования. При необходимости
+    удаляет отложенные задачи (отправка победителя голосования с посчётом голосов).
     :param chat_id: Идентификатор чата
-    """
-    with db.atomic() as transaction:
-        try:
-            config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
-            poll_id: str = config.last_poll_id
-            winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
-            bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-            MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
-        except Exception as e:
-            transaction.rollback()
-            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
-
-
-def set_schedule(time: datetime, chat_id: int):
-    """
-    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
-    задачи.
-    :param time: Время
-    :param chat_id: Идентификатор чата
+    :param winner: Победивший пользователь
+    :param delete_jobs: Удалять ли отложенные задачи
     :return:
     """
-    logging.info("Setting schedule to check poll results to time (UTC): {}"
-                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
-    Thread(target=schedule_checker).start()
+    logging.info("Got just one participant available, poll is not necessary")
+    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+    MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
+    if delete_jobs:
+        scheduler.delete_jobs()
 
 
 @bot.message_handler(commands=["start"])
@@ -142,11 +74,7 @@ def delete(message):
     """
     with db.atomic() as transaction:
         try:
-            args: list[str] = extract_arg(message.text)
-            identity = ' '.join(args)
-            if not identity:
-                logging.error('Cannot add member without identity')
-                raise ValueError('Не удаётся добавить пользователя без имени ли или id')
+            identity = get_string_after_command(message.text)
             chat_id = message.chat.id
             MemberRepo.delete_member(identity=identity, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
@@ -188,8 +116,6 @@ def vote(message):
     sent_message = None
     with db.atomic() as transaction:
         try:
-            args: list[str] = extract_arg(message.text, 2, True)
-            hours, minutes = default_daily_hours, default_daily_minutes
             chat_id = message.chat.id
             args: list[str] = extract_arg(message.text, 2, True)
             hours, minutes, warning = default_daily_hours, default_daily_minutes, None
@@ -200,17 +126,11 @@ def vote(message):
             if warning:
                 bot.send_message(chat_id, warning)
 
-            if args and args[0].isdigit() and args[1].isdigit():
-                hours, minutes = int(args[0]), int(args[1])
-            elif args and not (args[0].isdigit() and args[1].isdigit()):
-                logging.warning("Got time in wrong format (hours={}, minutes={}). All args should be digits."
-                                .format(hours, minutes))
-                logging.info("Setting default time UTC (hours={}, minutes={}) for scheduling daily poll"
-                             .format(default_daily_hours, default_daily_minutes))
-                bot.send_message(chat_id, 'Не удалось установить дейли в указанное время '
-                                          '(часы={}, минуты={}). Голосование установлено на '
-                                          'время по умолчанию ({}:{} UTC)'
-                                 .format(hours, minutes, default_daily_hours, default_daily_minutes))
+            if args:
+                hours, minutes, warning = get_correct_poll_time(args[0], args[1])
+
+            if warning:
+                bot.send_message(chat_id, warning)
 
             if not ConfigRepo.can_organise_daily_poll(chat_id):
                 logging.error('Cannot organise daily tender in chat (id={}): there was already a daily tender today'
@@ -220,10 +140,8 @@ def vote(message):
             members = get_members_for_daily(chat_id)
 
             if len(members) == 1:
-                logging.info("Got just one participant available, poll is not necessary")
                 winner = members[0]
-                bot.send_message(chat_id, constants.win_message.format(winner.full_name))
-                MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
+                send_remaining_member_win_message(chat_id, winner)
                 return
 
             options = [m.full_name for m in members]
@@ -247,23 +165,6 @@ def vote(message):
             if sent_message:
                 bot.delete_message(chat_id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при создании опроса: {e}")
-
-
-def get_members_for_daily(chat_id):
-    members = MemberRepo.get_available_members(chat_id=chat_id)
-    if members is None:
-        logging.warning("No members in db that can participate "
-                        "on daily tender (chat id={0}), resetting members..."
-                        .format(chat_id))
-        MemberRepo.reset_members_participation_statuses(chat_id)
-        members = MemberRepo.get_available_members(chat_id=chat_id)
-        if members is None:
-            logging.error("Cannot get members: no users in db that "
-                          "can participate on daily tender (chat id={})".format(chat_id))
-            raise DatabaseError('Не удалось получить пользователей для создания опроса')
-    else:
-        logging.info("{} members can participate".format(len(members)))
-    return members
 
 
 @bot.message_handler(commands=["repoll"])

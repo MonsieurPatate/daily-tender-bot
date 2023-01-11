@@ -2,7 +2,7 @@ import os
 import sys
 import telebot
 
-from app.database.config import db
+from app.config import db
 from app.database.models import Member, ChatConfig, TenderParticipant
 from bot import bot
 
