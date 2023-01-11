@@ -1,7 +1,6 @@
 import logging
 from datetime import date, timedelta
 
-from peewee import DatabaseError
 from telebot.types import Poll, PollOption
 
 from app import constants
