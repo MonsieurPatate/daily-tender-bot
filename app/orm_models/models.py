@@ -1,6 +1,5 @@
 from datetime import date
 from peewee import *
-from .config import db
 from app.config import db
 
 

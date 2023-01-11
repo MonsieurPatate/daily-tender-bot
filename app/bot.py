@@ -117,9 +117,6 @@ def add(message):
         try:
             chat_id = message.chat.id
             name = get_string_after_command(message.text)
-            if not name:
-                logging.error('Cannot add member without name')
-                raise ValueError('Не удаётся добавить пользователя без имени')
             MemberRepo.add_member(full_name=name, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь "{}" успешно добавлен'.format(name))
         except Exception as e:
