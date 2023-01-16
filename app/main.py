@@ -1,8 +1,19 @@
+import os
+import sys
 import telebot
 
 from app.database.config import db
 from app.database.models import Member, ChatConfig, TenderParticipant
 from bot import bot
+
+current_dir = os.path.dirname(os.path.realpath(__file__))
+main_folder_path = os.path.dirname(current_dir)
+parent_dir = os.path.dirname(main_folder_path)
+sys.path.append(os.path.dirname(parent_dir))
+sys.path.append(current_dir)
+sys.path.append(parent_dir)
+sys.path.append(main_folder_path)
+
 
 if __name__ == '__main__':
     # db.drop_tables([Member, ChatConfig, TenderParticipant])
