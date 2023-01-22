@@ -8,8 +8,8 @@ from peewee import DatabaseError
 from app import constants
 from app.config import scheduler, bot, db
 from app.constants import default_daily_hours, default_daily_minutes
-from app.database.models import ChatConfig, Member
-from app.database.repo import ConfigRepo, TenderParticipantRepo, MemberRepo
+from app.orm_models.models import ChatConfig, Member
+from app.orm_models.repo import ConfigRepo, TenderParticipantRepo, MemberRepo
 
 
 def extract_arg(arg: str, count: int = None, zero_args: bool = False) -> list[str] | None:

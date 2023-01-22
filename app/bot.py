@@ -6,10 +6,10 @@ from telebot.types import Poll, PollOption
 from app import constants
 from app.config import db, scheduler, bot
 from app.constants import default_daily_hours, default_daily_minutes
-from app.database.models import Member, ChatConfig, TenderParticipant
+from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
     get_members_for_daily, get_correct_poll_time
-from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
+from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
 
 def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False):

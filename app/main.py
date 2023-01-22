@@ -3,7 +3,7 @@ import sys
 import telebot
 
 from app.config import db
-from app.database.models import Member, ChatConfig, TenderParticipant
+from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from bot import bot
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -16,7 +16,6 @@ sys.path.append(main_folder_path)
 
 
 if __name__ == '__main__':
-    # db.drop_tables([Member, ChatConfig, TenderParticipant])
     db.create_tables([Member, ChatConfig, TenderParticipant])
     bot.set_my_commands([
         telebot.types.BotCommand("/start", "Запуск бота"),
