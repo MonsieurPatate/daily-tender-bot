@@ -11,3 +11,4 @@ docker-compose.yml
 **/.DS_Store
 **/venv
 **/env
+**/app/database
