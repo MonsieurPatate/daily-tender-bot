@@ -5,7 +5,6 @@ from peewee import *
 from scheduler import Scheduler
 from telebot import TeleBot
 
-
 bot_token = os.environ["BOT_TOKEN"]
 
 bot = TeleBot(bot_token)
