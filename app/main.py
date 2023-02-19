@@ -1,5 +1,6 @@
 import os
 import sys
+
 import telebot
 
 from app.config import db
