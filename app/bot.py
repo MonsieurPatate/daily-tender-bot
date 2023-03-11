@@ -2,12 +2,7 @@ import logging
 from datetime import date, timedelta
 from time import sleep
 
-from telebot import TeleBot
 from telebot.types import Poll, PollOption
-
-from app.database.models import Member
-from database.config import db, bot_token
-from database.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
 from app import constants
 from app.config import db, scheduler, bot
@@ -135,7 +130,7 @@ def chat_info(message):
 
 
 @bot.message_handler(commands=["poll"])
-def vote(message):
+def create_poll(message):
     """
     Запускает голосование из трёх случайно выбранных пользователей на указанное время.
     В сообщении после команды должно быть время окончания голосования.
