@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -15,16 +16,28 @@ sys.path.append(current_dir)
 sys.path.append(parent_dir)
 sys.path.append(main_folder_path)
 
+
+def debugger_is_active() -> bool:
+    """Return "True" if the debugger is currently active"""
+    return hasattr(sys, 'gettrace') and sys.gettrace() is not None
+
+
+logging_level = logging.INFO
+
+if debugger_is_active():
+    logging_level = logging.DEBUG
+
 if __name__ == '__main__':
+    logging.basicConfig(level=logging_level, format='%(asctime)s %(levelname)s:%(message)s')
     db.create_tables([Member, ChatConfig, TenderParticipant])
     bot.set_my_commands([
-        telebot.types.BotCommand("/start", "Запуск бота"),
+        telebot.types.BotCommand("/start", "Запуск и инициализация бота для текущего чата"),
         telebot.types.BotCommand("/add", "Добавление пользователей"),
         telebot.types.BotCommand("/delete", "Удаление пользователей"),
         telebot.types.BotCommand("/info", "Список участников тендера"),
         telebot.types.BotCommand("/poll", "Создание тендера на проведение дейли"),
         telebot.types.BotCommand("/repoll", "Замена одного участника текущего опроса"),
-        telebot.types.BotCommand("/endpoll", "Завершение опроса"),
+        telebot.types.BotCommand("/endpoll", "Завершение опроса")
     ])
 
     # Start the bot

@@ -3,8 +3,6 @@ import random
 
 from .models import *
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(message)s')
-
 
 class TenderParticipantRepo:
     """
@@ -179,7 +177,7 @@ class MemberRepo:
     @staticmethod
     def update_member(chat_id: int,
                       full_name: str,
-                      can_participate: bool = None,
+                      can_participate: bool,
                       skip_until_date: date = None):
         """
         Обновляет пользователя чата.
@@ -195,8 +193,7 @@ class MemberRepo:
             raise DatabaseError('Не удалось получить участника по имени "{}" чата с id={}'.format(full_name, chat_id))
         if can_participate is not None:
             member.can_participate = can_participate
-        if skip_until_date:
-            member.skip_until_date = skip_until_date
+        member.skip_until_date = skip_until_date
         res = member.save()
         logging.info('Member with name "{}" of chat #{} is updated ({})'.format(full_name, chat_id, res))
 
@@ -270,10 +267,10 @@ class MemberRepo:
         if not exceptions:
             exceptions = []
 
-        where_query = \
+        where_condition = \
             Member.can_participate_query() & (Member.chat_id == chat_id) & (Member.full_name.not_in(exceptions))
 
-        members = Member.select().where(where_query)
+        members = Member.select().where(where_condition)
 
         if len(members) == 0:
             return None
