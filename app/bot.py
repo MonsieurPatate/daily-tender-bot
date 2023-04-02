@@ -9,7 +9,7 @@ from app.config import db, scheduler, bot
 from app.constants import default_daily_hours, default_daily_minutes
 from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
-    get_members_for_daily, get_correct_poll_time
+    get_members_for_daily, get_correct_poll_time, try_parse_date
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
 
@@ -129,6 +129,30 @@ def chat_info(message):
             bot.send_message(message.chat.id, f"Произошла ошибка при получении пользователей: {e}")
 
 
+@bot.message_handler(commands=["free"])
+def free(message):
+    """
+    Освобождает пользователя от участия в тендерах до указанной даты
+    :param message: Сообщение с командой
+    """
+    with db.atomic() as transaction:
+        try:
+            chat_id = message.chat.id
+            args: list[str] = extract_arg(message.text, 3, False)
+            if not args:
+                bot.send_message(chat_id, f"Не заданы аргументы. Укажите имя и дату")
+                return
+            full_name = args[0] + ' ' + args[1]
+            parsed_date = try_parse_date(args[2])
+            MemberRepo.update_member(chat_id=chat_id,
+                                     full_name=full_name,
+                                     skip_until_date=parsed_date)
+            bot.send_message(chat_id, f"{full_name} освобождён от тендеров до {parsed_date.strftime('%d.%m.%Y')}")
+        except Exception as e:
+            transaction.rollback()
+            bot.send_message(chat_id, f"Ошибка исполнения команды: {e}")
+
+
 @bot.message_handler(commands=["poll"])
 def create_poll(message):
     """
@@ -181,7 +205,7 @@ def create_poll(message):
         except Exception as e:
             transaction.rollback()
             if sent_message:
-                bot.delete_message(chat_id, sent_message.id)
+                bot.delete_message(message.chat.id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при создании опроса: {e}")
 
 
@@ -254,7 +278,7 @@ def recreate_poll(message):
         except Exception as e:
             transaction.rollback()
             if sent_message:
-                bot.delete_message(chat_id, sent_message.id)
+                bot.delete_message(message.chat.id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при пересоздании опроса: {e}")
 
 

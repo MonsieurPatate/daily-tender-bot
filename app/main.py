@@ -35,6 +35,7 @@ if __name__ == '__main__':
         telebot.types.BotCommand("/start", "Запуск и инициализация бота для текущего чата"),
         telebot.types.BotCommand("/add", "Добавление пользователей"),
         telebot.types.BotCommand("/delete", "Удаление пользователей"),
+        telebot.types.BotCommand("/free", "Освободить от участия в тендере до указанной даты"),
         telebot.types.BotCommand("/info", "Список участников тендера"),
         telebot.types.BotCommand("/poll", "Создание тендера на проведение дейли"),
         telebot.types.BotCommand("/repoll", "Замена одного участника текущего опроса"),

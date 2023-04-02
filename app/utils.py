@@ -155,3 +155,17 @@ def get_correct_poll_time(hours_str: str, minutes_str: str):
                                                           default_daily_hours,
                                                           default_daily_minutes)
         return default_daily_hours, default_daily_minutes, warning
+
+
+def try_parse_date(date_string):
+    """
+    Возвращает дату, сформированную из строки
+    :param date_string: Строкое представление даты
+    :return: Дата
+    """
+    for date_format in ('%d.%m.%Y', '%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%d%m%Y', '%Y%m%d'):
+        try:
+            return datetime.strptime(date_string, date_format).date()
+        except ValueError:
+            pass
+    raise ValueError('no valid date format found')
