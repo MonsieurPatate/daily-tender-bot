@@ -8,10 +8,10 @@ class Member(Model):
     Класс пользователя-участника в будущих голосованиях
     за проведение дейли
     """
-    full_name = TextField()
     chat_id = IntegerField()
-    skip_until_date = DateField(null=True)
+    full_name = TextField()
     can_participate = BooleanField(default=True)
+    skip_until_date = DateField(null=True)
 
     class Meta:
         database = db
