@@ -177,7 +177,7 @@ class MemberRepo:
     @staticmethod
     def update_member(chat_id: int,
                       full_name: str,
-                      can_participate: bool,
+                      can_participate: bool = None,
                       skip_until_date: date = None):
         """
         Обновляет пользователя чата.
