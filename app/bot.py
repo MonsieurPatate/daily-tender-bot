@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import date, timedelta
 from time import sleep
 
@@ -6,9 +7,9 @@ from telebot.types import Poll, PollOption
 
 from app import constants
 from app.config import db, scheduler, bot
-from app.constants import default_daily_hours, default_daily_minutes
+from app.constants import DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES
 from app.orm_models.models import Member, ChatConfig, TenderParticipant
-from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_arg, get_string_after_command, \
+from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_args, \
     get_members_for_daily, get_correct_poll_time, try_parse_date
 from orm_models.repo import MemberRepo, ConfigRepo, TenderParticipantRepo
 
@@ -24,7 +25,7 @@ def send_remaining_member_win_message(chat_id, winner, delete_jobs: bool = False
     :return:
     """
     logging.info("Got just one participant available, poll is not necessary")
-    bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+    bot.send_message(chat_id, constants.WIN_MESSAGE_TEMPLATE.format(winner.full_name))
     MemberRepo.update_member(chat_id, winner.full_name, can_participate=False)
     if delete_jobs:
         scheduler.delete_jobs()
@@ -43,7 +44,7 @@ def start(message):
             bot.send_message(chat_id, 'Добавлена первичная конфигурация бота для этого чата')
         except Exception as e:
             transaction.rollback()
-            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
+            bot.send_message(chat_id, f"Произошла ошибка при создании первичной конфигурации чата: {e}")
 
 
 def schedule_checker():
@@ -82,7 +83,7 @@ def add(message):
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
-            name = get_string_after_command(message.text)
+            name = extract_args(message.text, 1)[0].replace('"', '')
             MemberRepo.add_member(full_name=name, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь "{}" успешно добавлен'.format(name))
         except Exception as e:
@@ -98,7 +99,7 @@ def delete(message):
     """
     with db.atomic() as transaction:
         try:
-            identity = get_string_after_command(message.text)
+            identity = extract_args(message.text, 1)[0].replace('"', '')
             chat_id = message.chat.id
             MemberRepo.delete_member(identity=identity, chat_id=chat_id)
             bot.send_message(message.chat.id, 'Пользователь с идентификатором "{}" успешно удалён'
@@ -120,8 +121,8 @@ def chat_info(message):
             chat_id = message.chat.id
             members = MemberRepo.get_members_by_chat_id(chat_id=chat_id)
             res = 'Встречайте участников тендера:\n'
-            for i, member in enumerate(list(members), 1):
-                res += f'{i}. {member.get_status_emoji()} {member.full_name} ' \
+            for index, member in enumerate(list(members), 1):
+                res += f'{index}. {member.get_status_emoji()} {member.full_name} ' \
                        f'(id={member.id}{member.availability_info()})\n'
             bot.send_message(chat_id, res)
         except Exception as e:
@@ -138,12 +139,9 @@ def free(message):
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
-            args: list[str] = extract_arg(message.text, 3, False)
-            if not args:
-                bot.send_message(chat_id, f"Не заданы аргументы. Укажите имя и дату")
-                return
-            full_name = args[0] + ' ' + args[1]
-            parsed_date = try_parse_date(args[2])
+            args: list[str] = extract_args(message.text, 2)
+            full_name = args[0].replace('"', '')
+            parsed_date = try_parse_date(args[1])
             MemberRepo.update_member(chat_id=chat_id,
                                      full_name=full_name,
                                      skip_until_date=parsed_date)
@@ -165,8 +163,9 @@ def create_poll(message):
     with db.atomic() as transaction:
         try:
             chat_id = message.chat.id
-            args: list[str] = extract_arg(message.text, 2, True)
-            hours, minutes, warning = default_daily_hours, default_daily_minutes, None
+            time_str = extract_args(message.text, 1)[0]
+            args: list[str] = re.split('[:.]', time_str)
+            hours, minutes, warning = DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES, None
 
             if args:
                 hours, minutes, warning = get_correct_poll_time(args[0], args[1])
@@ -189,7 +188,7 @@ def create_poll(message):
             options = [m.full_name for m in members]
             sent_message = bot.send_poll(chat_id=chat_id,
                                          options=options,
-                                         question=constants.poll_header)
+                                         question=constants.POLL_HEADER)
 
             poll_id = sent_message.poll.id
             TenderParticipantRepo.delete_participants(chat_id)
@@ -205,7 +204,7 @@ def create_poll(message):
         except Exception as e:
             transaction.rollback()
             if sent_message:
-                bot.delete_message(message.chat.id, sent_message.id)
+                bot.delete_message(chat_id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при создании опроса: {e}")
 
 
@@ -227,7 +226,7 @@ def recreate_poll(message):
                 logging.error('Cannot recreate poll that does not exist')
                 raise Exception('Не удаётся пересоздать опрос без предварительного создания')
 
-            dropped_member_name: str = get_string_after_command(message.text)
+            dropped_member_name: str = extract_args(message.text, 1)[0].replace('"', '')
 
             logging.info('Recreating poll, dropping member with name "{}" and choosing new tender participant'
                          .format(dropped_member_name))
@@ -264,7 +263,7 @@ def recreate_poll(message):
 
             sent_message = bot.send_poll(chat_id=chat_id,
                                          options=new_tender_member_names,
-                                         question=constants.poll_header)
+                                         question=constants.POLL_HEADER)
 
             poll_id = sent_message.poll.id
             TenderParticipantRepo.delete_participants(chat_id)
@@ -278,11 +277,11 @@ def recreate_poll(message):
         except Exception as e:
             transaction.rollback()
             if sent_message:
-                bot.delete_message(message.chat.id, sent_message.id)
+                bot.delete_message(chat_id, sent_message.id)
             bot.send_message(message.chat.id, f"Произошла ошибка при пересоздании опроса: {e}")
 
 
-@bot.poll_handler(lambda p: not p.is_closed)
+@bot.poll_handler(lambda poll: not poll.is_closed)
 def vote_answer_handler(poll: Poll):
     """
     Хэндлер, реагирующий на выборы в голосовании. Записывает голоса
@@ -294,9 +293,9 @@ def vote_answer_handler(poll: Poll):
             poll_id: str = poll.id
             logging.info('Updating vote counts of daily tender poll (poll_id={0})'.format(poll_id))
             options: list[PollOption] = poll.options
-            for o in options:
-                member = MemberRepo.get_member_by_full_name(o.text)
-                TenderParticipantRepo.update_participant_vote_count(poll_id, member, o.voter_count)
+            for option in options:
+                member = MemberRepo.get_member_by_full_name(option.text)
+                TenderParticipantRepo.update_participant_vote_count(poll_id, member, option.voter_count)
             logging.info('Successfully updated vote counts of daily tender poll (poll_id={0})'.format(poll_id))
         except Exception as e:
             transaction.rollback()

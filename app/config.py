@@ -1,13 +1,13 @@
 import os
-from datetime import timezone
+import telebot
 
+from datetime import timezone
 from peewee import *
 from scheduler import Scheduler
-from telebot import TeleBot
 
 bot_token = os.environ["BOT_TOKEN"]
 
-bot = TeleBot(bot_token)
+bot = telebot.TeleBot(bot_token)
 db = SqliteDatabase(
         os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),

@@ -1,4 +1,5 @@
 import logging
+import shlex
 from datetime import datetime, timezone
 from threading import Thread
 from time import sleep
@@ -7,45 +8,32 @@ from peewee import DatabaseError
 
 from app import constants
 from app.config import scheduler, bot, db
-from app.constants import default_daily_hours, default_daily_minutes
+from app.constants import DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES
 from app.orm_models.models import ChatConfig, Member
 from app.orm_models.repo import ConfigRepo, TenderParticipantRepo, MemberRepo
 
 
-def extract_arg(arg: str, count: int = None, zero_args: bool = False) -> list[str] | None:
+def extract_args(text: str, count: int = None) -> list[str] | None:
     """
     Получает аргументы команды бота.
-    :param arg: Строка, включающая команду и аргументы вида '/command arg1 arg2'
+    :param text: Строка, включающая команду и аргументы вида '/command arg1 arg2'
     :param count: Кол-во аргументов
     :param zero_args: Может быть 0 аргументов
     :return: Список аргументов без самой команды, либо None, если не получилось спарсить
     аргументы
     """
-    args = arg.split()[1:]
+    args = shlex.split(text)
+    args.remove(args[0])
 
-    if len(args) == 0 and zero_args:
+    if len(args) == 0:
         return None
 
     if count and len(args) != count:
-        logging.error("Cannot parse command args (arg={}). Count of args should be {}".format(arg, count))
-        raise ValueError('Отсутствуют аргументы команды (строка - "{}"). Должно быть аргументов: {}'.format(arg, count))
+        logging.error("Cannot parse command args (arg={}). Count of args should be {}".format(text, count))
+        raise ValueError('Отсутствуют аргументы команды (строка - "{}"). Должно быть аргументов: {}. Часы и минуты '
+                         'разделяйте через точку либо двоеточие. Имя заключайте в ""'.format(text, count))
 
     return args
-
-
-def get_string_after_command(message_text: str):
-    """
-    Возвращает строку после команды (/command <строка>)
-    :param message_text: текст с командой и аргументами
-    :return: Строка после команды
-    """
-    logging.info('Getting identity from command "{}"'.format(message_text))
-    args: list[str] = extract_arg(message_text)
-    joined_str_arg = ' '.join(args)
-    if not joined_str_arg:
-        logging.error('Error during parsing identity: empty identity string')
-        raise ValueError('Ошибка ввода команды: после команды необходимо ввести хотя бы один символ')
-    return joined_str_arg
 
 
 def get_daily_time_utc(hours: int, minutes: int):
@@ -68,13 +56,27 @@ def get_daily_time_utc(hours: int, minutes: int):
 
 def schedule_checker():
     """
-    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
+    Проверяет и запускает отложенные задачи
     """
     logging.info('Start of schedule loop to execute jobs on separate thread')
     while len(scheduler.get_jobs()) > 0:
         scheduler.exec_jobs()
         sleep(1)
     logging.info('Schedule loop shut down successfully')
+
+
+def set_schedule(time: datetime, chat_id: int):
+    """
+    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
+    задачи.
+    :param time: Время
+    :param chat_id: Идентификатор чата
+    :return:
+    """
+    logging.info("Setting schedule to check poll results to time (UTC): {}"
+                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
+    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
+    Thread(target=schedule_checker).start()
 
 
 def check_poll_results(chat_id: int):
@@ -87,8 +89,10 @@ def check_poll_results(chat_id: int):
         try:
             config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
             poll_id: str = config.last_poll_id
+            poll_message_id: str = config.last_poll_message_id
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
-            bot.send_message(chat_id, constants.win_message.format(winner.full_name))
+            bot.send_message(chat_id, constants.WIN_MESSAGE_TEMPLATE.format(winner.full_name))
+            bot.stop_poll(chat_id, poll_message_id)
             MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
         except Exception as e:
             transaction.rollback()
@@ -119,20 +123,6 @@ def get_members_for_daily(chat_id):
     return members
 
 
-def set_schedule(time: datetime, chat_id: int):
-    """
-    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
-    задачи.
-    :param time: Время
-    :param chat_id: Идентификатор чата
-    :return:
-    """
-    logging.info("Setting schedule to check poll results to time (UTC): {}"
-                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
-    Thread(target=schedule_checker).start()
-
-
 def get_correct_poll_time(hours_str: str, minutes_str: str):
     """
     Возвращает корректное время (два целых числа: часы и минуты) из аргументов команды. В случае
@@ -148,13 +138,13 @@ def get_correct_poll_time(hours_str: str, minutes_str: str):
         logging.warning("Got time in wrong format (hours={}, minutes={}). All args should be digits."
                         .format(hours_str, minutes_str))
         logging.info("Setting default time UTC (hours={}, minutes={}) for scheduling daily poll"
-                     .format(default_daily_hours, default_daily_minutes))
+                     .format(DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES))
         warning = 'Не удалось установить дейли в указанное время (часы={}, минуты={}). Голосование установлено на '\
                   'время по умолчанию ({}:{} UTC)'.format(hours_str,
                                                           minutes_str,
-                                                          default_daily_hours,
-                                                          default_daily_minutes)
-        return default_daily_hours, default_daily_minutes, warning
+                                                          DEFAULT_DAILY_HOURS,
+                                                          DEFAULT_DAILY_MINUTES)
+        return DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES, warning
 
 
 def try_parse_date(date_string):
