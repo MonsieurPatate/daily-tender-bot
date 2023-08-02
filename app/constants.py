@@ -1,6 +1,6 @@
-poll_header = 'Тендер на дейли! Кто проводит дейли?'
-win_message = '{}, настало твоё время, ты был избран для проведения дейли!'
+POLL_HEADER = 'Тендер на дейли! Кто проводит дейли?'
+WIN_MESSAGE_TEMPLATE = '{}, настало твоё время, ты был(а) избран(а) для проведения дейли!'
 
 # время проведения по UTC
-default_daily_hours = 6
-default_daily_minutes = 25
+DEFAULT_DAILY_HOURS = 6
+DEFAULT_DAILY_MINUTES = 25
