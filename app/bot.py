@@ -44,7 +44,7 @@ def start(message):
             bot.send_message(chat_id, 'Добавлена первичная конфигурация бота для этого чата')
         except Exception as e:
             transaction.rollback()
-            bot.send_message(chat_id, f"Произошла ошибка при получении результатов голосования: {e}")
+            bot.send_message(chat_id, f"Произошла ошибка при создании первичной конфигурации чата: {e}")
 
 
 def schedule_checker():
@@ -189,8 +189,7 @@ def create_poll(message):
             options = [m.full_name for m in members]
             sent_message = bot.send_poll(chat_id=chat_id,
                                          options=options,
-                                         question=constants.POLL_HEADER,
-                                         close_date=daily_time.timestamp())
+                                         question=constants.POLL_HEADER)
 
             poll_id = sent_message.poll.id
             TenderParticipantRepo.delete_participants(chat_id)
@@ -282,7 +281,7 @@ def recreate_poll(message):
             bot.send_message(message.chat.id, f"Произошла ошибка при пересоздании опроса: {e}")
 
 
-@bot.poll_handler(lambda p: not p.is_closed)
+@bot.poll_handler(lambda poll: not poll.is_closed)
 def vote_answer_handler(poll: Poll):
     """
     Хэндлер, реагирующий на выборы в голосовании. Записывает голоса
@@ -294,9 +293,9 @@ def vote_answer_handler(poll: Poll):
             poll_id: str = poll.id
             logging.info('Updating vote counts of daily tender poll (poll_id={0})'.format(poll_id))
             options: list[PollOption] = poll.options
-            for o in options:
-                member = MemberRepo.get_member_by_full_name(o.text)
-                TenderParticipantRepo.update_participant_vote_count(poll_id, member, o.voter_count)
+            for option in options:
+                member = MemberRepo.get_member_by_full_name(option.text)
+                TenderParticipantRepo.update_participant_vote_count(poll_id, member, option.voter_count)
             logging.info('Successfully updated vote counts of daily tender poll (poll_id={0})'.format(poll_id))
         except Exception as e:
             transaction.rollback()

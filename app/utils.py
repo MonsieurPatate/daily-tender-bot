@@ -31,7 +31,7 @@ def extract_args(text: str, count: int = None) -> list[str] | None:
     if count and len(args) != count:
         logging.error("Cannot parse command args (arg={}). Count of args should be {}".format(text, count))
         raise ValueError('Отсутствуют аргументы команды (строка - "{}"). Должно быть аргументов: {}. Часы и минуты '
-                         'разделяйте через точку либо двоеточие. Имя заключайте в кавычки(")'.format(text, count))
+                         'разделяйте через точку либо двоеточие. Имя заключайте в ""'.format(text, count))
 
     return args
 
@@ -56,13 +56,27 @@ def get_daily_time_utc(hours: int, minutes: int):
 
 def schedule_checker():
     """
-    Проверяет и запускает отложенные задачи. Запускать в отдельном потоке.
+    Проверяет и запускает отложенные задачи
     """
     logging.info('Start of schedule loop to execute jobs on separate thread')
     while len(scheduler.get_jobs()) > 0:
         scheduler.exec_jobs()
         sleep(1)
     logging.info('Schedule loop shut down successfully')
+
+
+def set_schedule(time: datetime, chat_id: int):
+    """
+    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
+    задачи.
+    :param time: Время
+    :param chat_id: Идентификатор чата
+    :return:
+    """
+    logging.info("Setting schedule to check poll results to time (UTC): {}"
+                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
+    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
+    Thread(target=schedule_checker).start()
 
 
 def check_poll_results(chat_id: int):
@@ -75,8 +89,10 @@ def check_poll_results(chat_id: int):
         try:
             config: ChatConfig = ConfigRepo.get_config(chat_id=chat_id)
             poll_id: str = config.last_poll_id
+            poll_message_id: str = config.last_poll_message_id
             winner: Member = TenderParticipantRepo.get_most_voted_participant(poll_id).member
             bot.send_message(chat_id, constants.WIN_MESSAGE_TEMPLATE.format(winner.full_name))
+            bot.stop_poll(chat_id, poll_message_id)
             MemberRepo.update_member(chat_id=chat_id, full_name=winner.full_name, can_participate=False)
         except Exception as e:
             transaction.rollback()
@@ -105,20 +121,6 @@ def get_members_for_daily(chat_id):
     else:
         logging.info("{} members can participate".format(len(members)))
     return members
-
-
-def set_schedule(time: datetime, chat_id: int):
-    """
-    Создаёт отложенную задачу в отдельном потоке. Удаляет до этого созданные
-    задачи.
-    :param time: Время
-    :param chat_id: Идентификатор чата
-    :return:
-    """
-    logging.info("Setting schedule to check poll results to time (UTC): {}"
-                 .format(time.strftime('%d/%m/%Y %H:%M:%S')))
-    scheduler.once(time, check_poll_results, kwargs={"chat_id": chat_id})
-    Thread(target=schedule_checker).start()
 
 
 def get_correct_poll_time(hours_str: str, minutes_str: str):
