@@ -8,7 +8,6 @@ from peewee import DatabaseError
 
 from app import constants
 from app.config import scheduler, bot, db
-from app.constants import DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES
 from app.orm_models.models import ChatConfig, Member
 from app.orm_models.repo import ConfigRepo, TenderParticipantRepo, MemberRepo
 
@@ -138,13 +137,13 @@ def get_correct_poll_time(hours_str: str, minutes_str: str):
         logging.warning("Got time in wrong format (hours={}, minutes={}). All args should be digits."
                         .format(hours_str, minutes_str))
         logging.info("Setting default time UTC (hours={}, minutes={}) for scheduling daily poll"
-                     .format(DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES))
+                     .format(constants.DEFAULT_DAILY_HOURS, constants.DEFAULT_DAILY_MINUTES))
         warning = 'Не удалось установить дейли в указанное время (часы={}, минуты={}). Голосование установлено на '\
                   'время по умолчанию ({}:{} UTC)'.format(hours_str,
                                                           minutes_str,
-                                                          DEFAULT_DAILY_HOURS,
-                                                          DEFAULT_DAILY_MINUTES)
-        return DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES, warning
+                                                          constants.DEFAULT_DAILY_HOURS,
+                                                          constants.DEFAULT_DAILY_MINUTES)
+        return constants.DEFAULT_DAILY_HOURS, constants.DEFAULT_DAILY_MINUTES, warning
 
 
 def try_parse_date(date_string):

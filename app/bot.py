@@ -4,10 +4,8 @@ from datetime import date, timedelta
 from time import sleep
 
 from telebot.types import Poll, PollOption
-
 from app import constants
 from app.config import db, scheduler, bot
-from app.constants import DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES
 from app.orm_models.models import Member, ChatConfig, TenderParticipant
 from app.utils import set_schedule, get_daily_time_utc, check_poll_results, extract_args, \
     get_members_for_daily, get_correct_poll_time, try_parse_date
@@ -165,7 +163,7 @@ def create_poll(message):
             chat_id = message.chat.id
             time_str = extract_args(message.text, 1)[0]
             args: list[str] = re.split('[:.]', time_str)
-            hours, minutes, warning = DEFAULT_DAILY_HOURS, DEFAULT_DAILY_MINUTES, None
+            hours, minutes, warning = constants.DEFAULT_DAILY_HOURS, constants.DEFAULT_DAILY_MINUTES, None
 
             if args:
                 hours, minutes, warning = get_correct_poll_time(args[0], args[1])
